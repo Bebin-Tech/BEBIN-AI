@@ -4,22 +4,22 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="intro">
-        <p className="eyebrow">Phase 1</p>
+        <p className="eyebrow">Phase 2 Complete</p>
         <h1>Bebin AI</h1>
         <p className="summary">
-          The monorepo is ready for the real assistant build: FastAPI on the
-          backend, React on the frontend, and a future SLM training stack that
-          stays fully owned by this project.
+          The platform now has a working FastAPI backend, React frontend, and
+          deterministic dataset pipeline for ingesting, cleaning, preprocessing,
+          deduplicating, and validating training text.
         </p>
         <div className="status-grid">
           <div className="status-panel">
-            <h2>API</h2>
+            <h2>Backend API</h2>
             <p>{apiBaseUrl}</p>
           </div>
           <div className="status-panel">
             <h2>Next</h2>
             <p>
-              Phase 2 adds the dataset ingestion and validation pipeline.
+              Phase 3 trains and loads the project tokenizer.
             </p>
           </div>
         </div>
