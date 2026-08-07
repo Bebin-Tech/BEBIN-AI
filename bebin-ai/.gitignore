@@ -11,6 +11,11 @@ venv/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+
+# Datasets
+data/raw/*
+data/processed/*
 
 # Environment
 .env
@@ -29,4 +34,3 @@ Thumbs.db
 # Database
 *.sqlite3
 *.db
-
