@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,6 +10,14 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     app_env: str = Field(default="local", alias="APP_ENV")
     database_url: str = Field(default="sqlite:///./bebin_ai.db", alias="DATABASE_URL")
+    model_tokenizer_path: Path = Field(
+        default=Path("artifacts/tokenizer/tokenizer.json"),
+        alias="MODEL_TOKENIZER_PATH",
+    )
+    model_checkpoint_path: Path = Field(
+        default=Path("artifacts/runs/smoke/last.pt"),
+        alias="MODEL_CHECKPOINT_PATH",
+    )
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     enable_docs: bool = True
 
@@ -26,4 +35,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

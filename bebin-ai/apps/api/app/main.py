@@ -1,6 +1,14 @@
+from pathlib import Path
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.core.config import settings
 
@@ -22,8 +30,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
+    app.include_router(chat_router)
     return app
 
 
 app = create_app()
-

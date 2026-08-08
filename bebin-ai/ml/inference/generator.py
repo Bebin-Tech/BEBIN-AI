@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from collections.abc import Iterator
 
 import torch
 from tokenizers import Tokenizer
@@ -72,17 +73,29 @@ class TextGenerator:
 
     def generate(self, prompt: str, config: GenerationConfig | None = None) -> GenerationResult:
         config = config or GenerationConfig()
-        _validate_generation_config(config)
-        if config.seed is not None:
-            torch.manual_seed(config.seed)
+        state = self._initial_state(prompt, config)
+        for token_id, stopped_on_eos in self.iter_token_ids(prompt, config):
+            state["token_ids"].append(token_id)
+            state["new_token_ids"].append(token_id)
+            state["stopped_on_eos"] = stopped_on_eos
 
-        prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=True).ids
-        if not prompt_ids:
-            raise ValueError("prompt produced no tokens")
+        text = self.tokenizer.decode(state["token_ids"], skip_special_tokens=True)
+        return GenerationResult(
+            prompt=prompt,
+            text=text,
+            token_ids=state["token_ids"],
+            new_token_ids=state["new_token_ids"],
+            stopped_on_eos=state["stopped_on_eos"],
+        )
 
-        token_ids = list(prompt_ids)
-        new_token_ids: list[int] = []
-        stopped_on_eos = False
+    def iter_token_ids(
+        self,
+        prompt: str,
+        config: GenerationConfig | None = None,
+    ) -> Iterator[tuple[int, bool]]:
+        config = config or GenerationConfig()
+        state = self._initial_state(prompt, config)
+        token_ids: list[int] = state["token_ids"]
 
         with torch.no_grad():
             for _ in range(config.max_new_tokens):
@@ -99,20 +112,29 @@ class TextGenerator:
                     repetition_penalty=config.repetition_penalty,
                 )
                 token_ids.append(next_token_id)
-                new_token_ids.append(next_token_id)
-
-                if config.stop_on_eos and self.eos_token_id is not None and next_token_id == self.eos_token_id:
-                    stopped_on_eos = True
+                stopped_on_eos = (
+                    config.stop_on_eos
+                    and self.eos_token_id is not None
+                    and next_token_id == self.eos_token_id
+                )
+                yield next_token_id, stopped_on_eos
+                if stopped_on_eos:
                     break
 
-        text = self.tokenizer.decode(token_ids, skip_special_tokens=True)
-        return GenerationResult(
-            prompt=prompt,
-            text=text,
-            token_ids=token_ids,
-            new_token_ids=new_token_ids,
-            stopped_on_eos=stopped_on_eos,
-        )
+    def _initial_state(self, prompt: str, config: GenerationConfig) -> dict[str, Any]:
+        _validate_generation_config(config)
+        if config.seed is not None:
+            torch.manual_seed(config.seed)
+
+        prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=True).ids
+        if not prompt_ids:
+            raise ValueError("prompt produced no tokens")
+
+        return {
+            "token_ids": list(prompt_ids),
+            "new_token_ids": [],
+            "stopped_on_eos": False,
+        }
 
 
 def _model_config_from_checkpoint(

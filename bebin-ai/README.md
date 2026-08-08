@@ -2,7 +2,7 @@
 
 Bebin AI is a production-oriented AI assistant platform built phase-by-phase.
 
-This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript frontend skeleton, local database infrastructure, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, and local text generation. RAG, users, and chat UI arrive in later phases.
+This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript chat frontend, local database infrastructure, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, local text generation, and REST chat endpoints. RAG, users, and persistence arrive in later phases.
 
 ## Phase 1 Status
 
@@ -68,6 +68,29 @@ Completed in this phase:
 - CLI generation command.
 - Unit tests for sampling filters, argmax decoding, checkpoint loading, and generation.
 
+## Phase 7 Status
+
+Completed in this phase:
+
+- FastAPI `/chat` endpoint backed by the local Transformer checkpoint.
+- FastAPI `/chat/stream` endpoint using server-sent events.
+- Request/response schemas for generation controls.
+- Lazy model loading from configured local artifact paths.
+- API tests for normal and streaming chat responses.
+
+## Phase 8 Status
+
+Completed in this phase:
+
+- ChatGPT-style React chat workspace.
+- Sidebar with local conversation history.
+- Message timeline with user and assistant messages.
+- Composer connected to the real FastAPI streaming endpoint.
+- Generation controls for max tokens, temperature, top-k, top-p, and repetition penalty.
+- Basic fenced code block rendering.
+- File picker UI ready for later document/RAG phases.
+- Browser-local conversation persistence through `localStorage`.
+
 ## Local Environment Findings
 
 - OS: Windows 10.0.26200.8973, x64.
@@ -105,6 +128,20 @@ node "C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js" run dev
 ```
 
 The frontend expects the API at `VITE_API_BASE_URL`, defaulting to `http://127.0.0.1:8000`.
+
+To use the chat UI, run the backend in one terminal and the frontend in another:
+
+```powershell
+cd "C:\Users\bbebi\OneDrive\Documents\BEBIN-AI\bebin-ai"
+.\apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir apps\api --reload
+```
+
+```powershell
+cd "C:\Users\bbebi\OneDrive\Documents\BEBIN-AI\bebin-ai\apps\web"
+node "C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js" run dev
+```
+
+Open `http://127.0.0.1:5173`.
 
 ## Database
 
@@ -205,3 +242,25 @@ For deterministic argmax decoding:
 ```
 
 Current smoke-test outputs are not meaningful because the model has only seen a tiny sample dataset. The inference engine is real; useful responses require a real dataset and longer training.
+
+## Chat API
+
+Run the backend from the repo root:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir apps\api --reload
+```
+
+Normal chat request:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/chat -ContentType 'application/json' -Body '{"message":"Bebin AI","max_new_tokens":8,"temperature":0,"top_k":0,"top_p":1,"repetition_penalty":1}'
+```
+
+Streaming chat request:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Method Post -Uri http://127.0.0.1:8000/chat/stream -ContentType 'application/json' -Body '{"message":"Bebin AI","max_new_tokens":8,"temperature":0,"top_k":0,"top_p":1,"repetition_penalty":1}' | Select-Object -ExpandProperty Content
+```
+
+The default model artifact paths are configured by `MODEL_TOKENIZER_PATH` and `MODEL_CHECKPOINT_PATH`.
