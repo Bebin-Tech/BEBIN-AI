@@ -18,7 +18,13 @@ class Settings(BaseSettings):
         default=Path("artifacts/runs/smoke/last.pt"),
         alias="MODEL_CHECKPOINT_PATH",
     )
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    upload_dir: Path = Field(default=Path("uploads"), alias="UPLOAD_DIR")
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
     enable_docs: bool = True
 
     model_config = SettingsConfigDict(

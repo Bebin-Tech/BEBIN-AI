@@ -21,6 +21,9 @@ data/processed/*
 artifacts/runs/*
 artifacts/checkpoints/*
 
+# Uploaded documents
+uploads/*
+
 # Environment
 .env
 .env.*

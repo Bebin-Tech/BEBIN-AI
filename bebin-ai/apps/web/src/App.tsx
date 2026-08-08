@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const storageKey = "bebin-ai-conversations";
+const tokenKey = "bebin-ai-token";
 
 type Role = "user" | "assistant";
 
@@ -9,6 +10,13 @@ type ChatMessage = {
   id: string;
   role: Role;
   content: string;
+  toolResults?: ToolResult[];
+};
+
+type ToolResult = {
+  name: string;
+  content: string;
+  metadata: Record<string, unknown>;
 };
 
 type Conversation = {
@@ -16,6 +24,22 @@ type Conversation = {
   title: string;
   messages: ChatMessage[];
   createdAt: string;
+};
+
+type User = {
+  id: string;
+  email: string;
+};
+
+type ApiConversation = {
+  id: string;
+  title: string;
+  created_at: string;
+  messages: Array<{
+    id: string;
+    role: Role;
+    content: string;
+  }>;
 };
 
 type GenerationSettings = {
@@ -35,6 +59,10 @@ const defaultSettings: GenerationSettings = {
 };
 
 export function App() {
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(tokenKey) ?? "");
+  const [user, setUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState("user@bebin.local");
+  const [authPassword, setAuthPassword] = useState("password123");
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeId, setActiveId] = useState(() => conversations[0]?.id ?? "");
   const [input, setInput] = useState("");
@@ -58,8 +86,12 @@ export function App() {
   }, [conversations.length]);
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(conversations));
-  }, [conversations]);
+    if (!authToken) {
+      return;
+    }
+
+    void loadRemoteState();
+  }, [authToken]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -69,6 +101,10 @@ export function App() {
     event?.preventDefault();
     const message = input.trim();
     if (!message || !activeConversation || isSending) {
+      return;
+    }
+    if (!authToken) {
+      setStatus("Sign in required");
       return;
     }
 
@@ -87,6 +123,11 @@ export function App() {
     setSelectedFiles([]);
     setIsSending(true);
     setStatus("Generating");
+    if (selectedFiles.length > 0) {
+      setStatus("Uploading documents");
+      await uploadSelectedFiles(selectedFiles);
+    }
+    setStatus("Generating");
     updateConversation(activeConversation.id, (conversation) => ({
       ...conversation,
       title: conversation.messages.length === 0 ? titleFromMessage(message) : conversation.title,
@@ -94,9 +135,25 @@ export function App() {
     }));
 
     try {
-      await streamChat(message, (partialText) => {
+      const done = await streamChat(message, activeConversation.id, (partialText) => {
         updateMessage(activeConversation.id, assistantMessage.id, partialText);
       });
+      if (done?.conversation_id && done.conversation_id !== activeConversation.id) {
+        const persistedConversationId = done.conversation_id;
+        updateConversation(activeConversation.id, (conversation) => ({
+          ...conversation,
+          id: persistedConversationId,
+        }));
+        setActiveId(persistedConversationId);
+      }
+      if (done?.tool_results && done.tool_results.length > 0) {
+        updateConversation(done.conversation_id ?? activeConversation.id, (conversation) => ({
+          ...conversation,
+          messages: conversation.messages.map((existing) =>
+            existing.id === assistantMessage.id ? { ...existing, toolResults: done.tool_results } : existing,
+          ),
+        }));
+      }
       setStatus("Ready");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -111,17 +168,25 @@ export function App() {
     }
   }
 
-  async function streamChat(message: string, onText: (text: string) => void) {
+  async function streamChat(
+    message: string,
+    conversationId: string,
+    onText: (text: string) => void,
+  ): Promise<{ conversation_id?: string; tool_results?: ToolResult[] } | undefined> {
     const response = await fetch(`${apiBaseUrl}/chat/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({
         message,
+        conversation_id: conversationId,
         max_new_tokens: settings.maxNewTokens,
         temperature: settings.temperature,
         top_k: settings.topK,
         top_p: settings.topP,
         repetition_penalty: settings.repetitionPenalty,
+        use_rag: true,
+        use_tools: true,
+        rag_top_k: 4,
       }),
     });
 
@@ -132,6 +197,7 @@ export function App() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let donePayload: { conversation_id?: string } | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -143,23 +209,33 @@ export function App() {
       const events = buffer.split("\n\n");
       buffer = events.pop() ?? "";
       for (const eventText of events) {
-        handleSseEvent(eventText, onText);
+        const payload = handleSseEvent(eventText, onText);
+        donePayload = payload ?? donePayload;
       }
     }
 
     if (buffer.trim()) {
-      handleSseEvent(buffer, onText);
+      const payload = handleSseEvent(buffer, onText);
+      donePayload = payload ?? donePayload;
     }
+    void loadRemoteConversations();
+    return donePayload;
   }
 
-  function newChat() {
-    const conversation = createConversation();
+  async function newChat() {
+    const conversation = authToken ? await createRemoteConversation() : createConversation();
     setConversations((current) => [conversation, ...current]);
     setActiveId(conversation.id);
     setInput("");
   }
 
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string) {
+    if (authToken) {
+      await fetch(`${apiBaseUrl}/conversations/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+    }
     setConversations((current) => {
       const next = current.filter((conversation) => conversation.id !== id);
       if (activeId === id) {
@@ -191,17 +267,103 @@ export function App() {
     }
   }
 
+  async function authenticate(mode: "login" | "register") {
+    setStatus(mode === "login" ? "Signing in" : "Creating account");
+    const response = await fetch(`${apiBaseUrl}/auth/${mode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: authEmail, password: authPassword }),
+    });
+    if (!response.ok) {
+      setStatus("Auth failed");
+      return;
+    }
+
+    const body = (await response.json()) as { token: string; user: User };
+    localStorage.setItem(tokenKey, body.token);
+    setAuthToken(body.token);
+    setUser(body.user);
+    setStatus("Ready");
+  }
+
+  function logout() {
+    localStorage.removeItem(tokenKey);
+    setAuthToken("");
+    setUser(null);
+    setConversations([createConversation()]);
+    setActiveId("");
+    setStatus("Signed out");
+  }
+
+  async function loadRemoteState() {
+    const me = await fetch(`${apiBaseUrl}/auth/me`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!me.ok) {
+      logout();
+      return;
+    }
+    setUser((await me.json()) as User);
+    await loadRemoteConversations();
+  }
+
+  async function loadRemoteConversations() {
+    const response = await fetch(`${apiBaseUrl}/conversations`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok) {
+      return;
+    }
+
+    const remote = ((await response.json()) as ApiConversation[]).map(fromApiConversation);
+    if (remote.length === 0) {
+      const conversation = await createRemoteConversation();
+      setConversations([conversation]);
+      setActiveId(conversation.id);
+      return;
+    }
+    setConversations(remote);
+    setActiveId((current) => (remote.some((conversation) => conversation.id === current) ? current : remote[0].id));
+  }
+
+  async function createRemoteConversation(): Promise<Conversation> {
+    const response = await fetch(`${apiBaseUrl}/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ title: "New conversation" }),
+    });
+    if (!response.ok) {
+      return createConversation();
+    }
+    return fromApiConversation((await response.json()) as ApiConversation);
+  }
+
+  async function uploadSelectedFiles(files: File[]) {
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`${apiBaseUrl}/documents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: form,
+      });
+      if (!response.ok) {
+        throw new Error(`Document upload failed for ${file.name}`);
+      }
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">✦</span>
+          <span className="brand-mark">B</span>
           <div>
             <strong>Bebin AI</strong>
             <span>Local SLM</span>
           </div>
         </div>
-        <button className="primary-action" type="button" onClick={newChat}>
+        <button className="primary-action" type="button" onClick={() => void newChat()}>
           New chat
         </button>
         <nav className="conversation-list" aria-label="Conversations">
@@ -217,13 +379,36 @@ export function App() {
             </button>
           ))}
         </nav>
+        <form className="auth-card" onSubmit={(event) => event.preventDefault()}>
+          <input
+            aria-label="Email"
+            value={authEmail}
+            onChange={(event) => setAuthEmail(event.target.value)}
+          />
+          <input
+            aria-label="Password"
+            type="password"
+            value={authPassword}
+            onChange={(event) => setAuthPassword(event.target.value)}
+          />
+          <div className="auth-actions">
+            <button type="button" onClick={() => void authenticate("login")}>Login</button>
+            <button type="button" onClick={() => void authenticate("register")}>Register</button>
+          </div>
+          {user && <small>Signed in as {user.email}</small>}
+        </form>
         <button
           className="secondary-action"
           type="button"
-          onClick={() => activeConversation && deleteConversation(activeConversation.id)}
+          onClick={() => activeConversation && void deleteConversation(activeConversation.id)}
         >
           Delete chat
         </button>
+        {user && (
+          <button className="secondary-action" type="button" onClick={logout}>
+            Sign out
+          </button>
+        )}
       </aside>
 
       <section className="chat-panel">
@@ -246,7 +431,7 @@ export function App() {
               <h2>How can I help you today?</h2>
               <p>
                 Connected to your local checkpoint through FastAPI. The current smoke model is tiny,
-                but this is the real end-to-end chat path.
+                but this is the real end-to-end chat and document retrieval path.
               </p>
             </div>
           )}
@@ -327,7 +512,7 @@ export function App() {
               onKeyDown={handleKeyDown}
             />
             <button className="send-button" disabled={isSending || !input.trim()} type="submit">
-              ↑
+              Send
             </button>
           </div>
         </form>
@@ -341,6 +526,16 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     <article className={`message ${message.role}`}>
       <div className="avatar">{message.role === "user" ? "You" : "B"}</div>
       <div className="message-content">
+        {message.toolResults && message.toolResults.length > 0 && (
+          <div className="tool-results">
+            {message.toolResults.map((result, index) => (
+              <details key={`${result.name}-${index}`}>
+                <summary>{result.name}</summary>
+                <pre>{result.content}</pre>
+              </details>
+            ))}
+          </div>
+        )}
         <RenderedContent content={message.content || " "} />
       </div>
     </article>
@@ -394,7 +589,10 @@ function NumberField({
   );
 }
 
-function handleSseEvent(eventText: string, onText: (text: string) => void) {
+function handleSseEvent(
+  eventText: string,
+  onText: (text: string) => void,
+): { conversation_id?: string; tool_results?: ToolResult[] } | undefined {
   const event = eventText
     .split("\n")
     .find((line) => line.startsWith("event:"))
@@ -407,20 +605,27 @@ function handleSseEvent(eventText: string, onText: (text: string) => void) {
     .trim();
 
   if (!event || !data || data === "{}") {
-    return;
+    return undefined;
   }
 
   if (event === "error") {
     throw new Error(data);
   }
 
-  const payload = JSON.parse(data) as { text?: string; response?: string };
+  const payload = JSON.parse(data) as {
+    text?: string;
+    response?: string;
+    conversation_id?: string;
+    tool_results?: ToolResult[];
+  };
   if (event === "token" && payload.text !== undefined) {
     onText(payload.text);
   }
   if (event === "done" && payload.response !== undefined) {
     onText(payload.response);
+    return { conversation_id: payload.conversation_id, tool_results: payload.tool_results };
   }
+  return undefined;
 }
 
 function loadConversations(): Conversation[] {
@@ -461,4 +666,17 @@ function withFileNote(message: string, files: File[]): string {
 
 function stripCodeLanguage(code: string): string {
   return code.replace(/^\w+\n/, "").trim();
+}
+
+function fromApiConversation(conversation: ApiConversation): Conversation {
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    createdAt: conversation.created_at,
+    messages: conversation.messages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+    })),
+  };
 }

@@ -2,7 +2,7 @@
 
 Bebin AI is a production-oriented AI assistant platform built phase-by-phase.
 
-This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript chat frontend, local database infrastructure, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, local text generation, and REST chat endpoints. RAG, users, and persistence arrive in later phases.
+This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript chat frontend, local database infrastructure, users, persisted conversations/messages, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, local text generation, REST chat endpoints, RAG over uploaded documents, modular tool calling, offline model evaluation, LoRA fine-tuning, and CPU inference quantization.
 
 ## Phase 1 Status
 
@@ -90,6 +90,70 @@ Completed in this phase:
 - Basic fenced code block rendering.
 - File picker UI ready for later document/RAG phases.
 - Browser-local conversation persistence through `localStorage`.
+
+## Phase 9 Status
+
+Completed in this phase:
+
+- SQLAlchemy models for users, sessions, conversations, and messages.
+- SQLite-backed local persistence through `DATABASE_URL`.
+- PBKDF2 password hashing using the Python standard library.
+- Bearer session tokens stored hashed in the database.
+- Auth endpoints for register, login, and current user.
+- Protected conversation endpoints for list, create, fetch, and delete.
+- Chat endpoints now persist user and assistant messages.
+- Frontend login/register controls and backend-backed conversation loading.
+
+## Phase 10 Status
+
+Completed in this phase:
+
+- PDF and text document upload.
+- Document text extraction and chunking.
+- Local deterministic embedding generation.
+- FAISS vector search behind a retriever interface.
+- Document list and search endpoints.
+- Chat-time retrieval context injection.
+- Frontend file upload wired to backend document ingestion.
+- Tests for chunking, embeddings, FAISS retrieval, document upload/search, and RAG chat context.
+
+## Phase 11 Status
+
+Completed in this phase:
+
+- Modular tool registry with typed tool calls and tool results.
+- Calculator tool for safe arithmetic expressions.
+- Uploaded document search tool backed by the existing RAG retriever.
+- Web search tool interface that reports clearly when no provider is configured.
+- Deterministic planner for explicit calculator, document search, and web search requests.
+- Tool results injected into the local model prompt and returned by the chat API.
+- Frontend rendering for tool results below assistant messages.
+- Tests for tool planning, calculator safety, disabled web search, and chat API tool output.
+
+## Phase 12 Status
+
+Completed in this phase:
+
+- Offline model evaluation module.
+- Validation loss and perplexity calculation from real checkpoint logits.
+- Local generation latency measurement.
+- Response-quality evaluation using prompt/reference JSONL examples.
+- Deterministic unigram precision, recall, F1, and exact-match metrics.
+- JSON evaluation reports for future dashboards or admin APIs.
+- CLI wrapper at `scripts\evaluate_model.py`.
+- Unit tests for full evaluation and latency-only evaluation.
+
+## Phase 13 Status
+
+Completed in this phase:
+
+- LoRA adapter modules for selected Transformer linear layers.
+- Base-checkpoint freezing so fine-tuning updates only adapter parameters.
+- LoRA adapter save/load helpers.
+- LoRA fine-tuning CLI command.
+- Dynamic int8 CPU quantization helper for local inference optimization.
+- Quantized generation CLI command.
+- Tests for LoRA injection, adapter training/reload, and quantized generation.
 
 ## Local Environment Findings
 
@@ -264,3 +328,105 @@ Invoke-WebRequest -UseBasicParsing -Method Post -Uri http://127.0.0.1:8000/chat/
 ```
 
 The default model artifact paths are configured by `MODEL_TOKENIZER_PATH` and `MODEL_CHECKPOINT_PATH`.
+
+## Users And Persistence
+
+Register:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/register -ContentType 'application/json' -Body '{"email":"user@bebin.local","password":"password123"}'
+```
+
+Login:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/login -ContentType 'application/json' -Body '{"email":"user@bebin.local","password":"password123"}'
+```
+
+Use the returned token as:
+
+```text
+Authorization: Bearer <token>
+```
+
+The frontend includes login/register fields in the sidebar and stores the session token in browser local storage.
+
+## RAG
+
+Upload a document from the frontend with the `+` button in the composer, or call the API directly:
+
+```powershell
+$headers = @{ Authorization = "Bearer <token>" }
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/documents -Headers $headers -Form @{ file = Get-Item ".\data\raw\sample.txt" }
+```
+
+Search uploaded documents:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/documents/search?query=local%20data" -Headers $headers
+```
+
+Chat requests use RAG by default with `use_rag: true` and `rag_top_k: 4`.
+
+The current embedding model is local and deterministic. It is intentionally behind a retriever interface so a trained neural embedding model or Chroma-backed store can replace it later without rewriting the chat API.
+
+## Tool Calling
+
+Tool calling is enabled by default on chat requests with `use_tools: true`.
+
+Calculator example:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/chat -ContentType 'application/json' -Body '{"message":"Calculate 12 / 3","max_new_tokens":8,"temperature":0,"top_k":0,"top_p":1,"repetition_penalty":1,"use_tools":true}'
+```
+
+Document search example:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/chat -Headers $headers -ContentType 'application/json' -Body '{"message":"search my documents: local data","max_new_tokens":8,"temperature":0,"top_k":0,"top_p":1,"repetition_penalty":1,"use_tools":true}'
+```
+
+Web search has a real tool boundary, but no provider is configured yet. It returns a clear disabled message instead of fake search results.
+
+## Evaluation
+
+Evaluate a trained checkpoint with loss, perplexity, and latency:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\evaluate_model.py --checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --dataset data\processed\train.jsonl --prompt "Bebin AI" --max-new-tokens 16 --temperature 0 --output artifacts\eval\smoke.json
+```
+
+Optional response-quality datasets are JSONL files with `prompt` and `reference` fields:
+
+```json
+{"prompt":"Bebin AI is","reference":"a locally trained assistant platform"}
+```
+
+Run quality evaluation:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\evaluate_model.py --checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --quality-dataset data\eval\quality.jsonl --prompt "Bebin AI" --max-new-tokens 16 --temperature 0
+```
+
+The quality metrics are transparent lexical metrics. They are useful for regression tracking, but they do not replace human review or richer evals once the model is trained on a serious dataset.
+
+## Fine-Tuning And Optimization
+
+Train a LoRA adapter from an existing base checkpoint:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\optimize_model.py lora-train --base-checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --dataset data\processed\train.jsonl --output-dir artifacts\lora\smoke --rank 8 --alpha 16 --epochs 1 --batch-size 1 --learning-rate 0.001 --validation-ratio 0
+```
+
+Outputs:
+
+- `artifacts\lora\smoke\adapter.pt`
+- `artifacts\lora\smoke\lora_training_log.csv`
+
+Generate with dynamic CPU int8 quantization:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\optimize_model.py quantized-generate --checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --prompt "Bebin AI" --max-new-tokens 16 --temperature 0
+```
+
+LoRA keeps the base model frozen and stores only adapter weights. Dynamic quantization is currently a runtime CPU optimization path; it does not replace the original checkpoint.

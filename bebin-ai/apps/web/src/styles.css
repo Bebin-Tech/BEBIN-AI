@@ -95,8 +95,41 @@ button {
 }
 
 .secondary-action {
-  margin-top: auto;
   color: #8a4b33;
+}
+
+.auth-card {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid #ded1bf;
+  padding-top: 0.8rem;
+}
+
+.auth-card input {
+  width: 100%;
+  border: 1px solid #ddd0bf;
+  border-radius: 8px;
+  background: #fff8ee;
+  color: #383127;
+  padding: 0.62rem 0.7rem;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.auth-actions button {
+  border: 1px solid #ddd0bf;
+  background: #f8f1e7;
+  color: #383127;
+  cursor: pointer;
+  padding: 0.55rem;
+}
+
+.auth-card small {
+  color: #7d7264;
 }
 
 .conversation-list {
@@ -282,6 +315,35 @@ h1 {
   color: #fff8ec;
   padding: 0.9rem;
   white-space: pre;
+}
+
+.tool-results {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-results details {
+  border: 1px solid #dfd2c1;
+  border-radius: 8px;
+  background: #fff8ee;
+}
+
+.tool-results summary {
+  cursor: pointer;
+  padding: 0.55rem 0.7rem;
+  color: #8c4d2f;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.tool-results pre {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid #dfd2c1;
+  border-radius: 0;
+  background: #fbf7ef;
+  color: #2f2a24;
 }
 
 .thinking {
