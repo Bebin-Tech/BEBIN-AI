@@ -2,7 +2,7 @@
 
 Bebin AI is a production-oriented AI assistant platform built phase-by-phase.
 
-This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript frontend skeleton, local database infrastructure, and a deterministic dataset preprocessing pipeline. The tokenizer, model, training pipeline, inference engine, RAG, users, and chat UI arrive in later phases.
+This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript frontend skeleton, local database infrastructure, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, and local text generation. RAG, users, and chat UI arrive in later phases.
 
 ## Phase 1 Status
 
@@ -22,6 +22,51 @@ Completed in this phase:
 - Canonical processed dataset output as JSONL records with `id`, `text`, `source`, and `metadata`.
 - Dataset validation with record counts, invalid JSON detection, required-field checks, duplicate checks, and text-length stats.
 - Unit tests for cleaning, preprocessing, and validation.
+
+## Phase 3 Status
+
+Completed in this phase:
+
+- BPE tokenizer training with Hugging Face Tokenizers.
+- Save/load support through a tokenizer JSON file.
+- Special tokens: `<pad>`, `<unk>`, `<bos>`, and `<eos>`.
+- Encode/decode helpers and CLI commands.
+- Unit tests for training, persistence, round-trip encoding, and empty dataset handling.
+
+## Phase 4 Status
+
+Completed in this phase:
+
+- Decoder-only Transformer language model in PyTorch.
+- Token and positional embeddings.
+- Causal multi-head self-attention.
+- Feed-forward layers, residual connections, pre-layer normalization, and final language-model head.
+- Configurable layers, heads, embedding dimension, context length, dropout, and vocab size.
+- Loss calculation for next-token training.
+- Unit tests for shapes, loss, causal masking, and invalid configuration.
+
+## Phase 5 Status
+
+Completed in this phase:
+
+- Tokenized language-model dataset generation from processed JSONL.
+- Train/validation split support.
+- PyTorch training loop with AdamW.
+- Checkpoint save and resume primitives.
+- CSV logging for train and validation loss.
+- Gradient clipping.
+- Mixed precision support when CUDA is available.
+- Unit tests for dataset windows, splitting, checkpointing, and tiny training runs.
+
+## Phase 6 Status
+
+Completed in this phase:
+
+- Checkpoint-backed text generation.
+- Autoregressive next-token decoding.
+- Sampling controls: temperature, top-k, top-p, repetition penalty, max new tokens, and EOS stopping.
+- CLI generation command.
+- Unit tests for sampling filters, argmax decoding, checkpoint loading, and generation.
 
 ## Local Environment Findings
 
@@ -96,3 +141,67 @@ Canonical output rows look like this:
 ```
 
 The output format is intentionally simple so Phase 3 can train a tokenizer from the same JSONL without changing the dataset contract.
+
+## Tokenizer
+
+Train a tokenizer from a processed JSONL dataset:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\train_tokenizer.py train --input data\processed\train.jsonl --output artifacts\tokenizer\tokenizer.json --vocab-size 8000 --min-frequency 2
+```
+
+Encode text:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\train_tokenizer.py encode --tokenizer artifacts\tokenizer\tokenizer.json --text "Bebin AI trains its own tokenizer."
+```
+
+Decode IDs:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\train_tokenizer.py decode --tokenizer artifacts\tokenizer\tokenizer.json --ids 2 10 11 3
+```
+
+The tokenizer expects real processed training data. If `data\processed\train.jsonl` is empty, training fails clearly instead of producing a useless tokenizer.
+
+## Model Architecture
+
+Inspect a model built from the saved tokenizer:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\inspect_model.py --tokenizer artifacts\tokenizer\tokenizer.json --context-length 128 --layers 4 --heads 4 --dim 256
+```
+
+The command builds the model, runs a small forward pass, and prints the vocab size, layer configuration, parameter count, and logits shape.
+
+## Training
+
+Run a tiny local training smoke test:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\train_model.py --dataset data\processed\train.jsonl --tokenizer artifacts\tokenizer\tokenizer.json --output-dir artifacts\runs\smoke --context-length 8 --layers 1 --heads 2 --dim 16 --dropout 0.0 --batch-size 1 --epochs 1 --learning-rate 0.001 --validation-ratio 0 --checkpoint-every-steps 1
+```
+
+Outputs:
+
+- `artifacts\runs\smoke\last.pt`
+- `artifacts\runs\smoke\best.pt`
+- `artifacts\runs\smoke\training_log.csv`
+
+Mixed precision is enabled only when CUDA is available. On CPU-only machines, training automatically uses standard precision.
+
+## Text Generation
+
+Generate from a trained checkpoint:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\generate_text.py --checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --prompt "Bebin AI" --max-new-tokens 32 --temperature 0.8 --top-k 50 --top-p 0.95 --repetition-penalty 1.1
+```
+
+For deterministic argmax decoding:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\generate_text.py --checkpoint artifacts\runs\smoke\last.pt --tokenizer artifacts\tokenizer\tokenizer.json --prompt "Bebin AI" --max-new-tokens 8 --temperature 0 --top-k 0 --top-p 1 --repetition-penalty 1
+```
+
+Current smoke-test outputs are not meaningful because the model has only seen a tiny sample dataset. The inference engine is real; useful responses require a real dataset and longer training.

@@ -17,6 +17,10 @@ dist/
 data/raw/*
 data/processed/*
 
+# Local model artifacts
+artifacts/runs/*
+artifacts/checkpoints/*
+
 # Environment
 .env
 .env.*

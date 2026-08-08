@@ -4,12 +4,12 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="intro">
-        <p className="eyebrow">Phase 2 Complete</p>
+        <p className="eyebrow">Phase 6 Complete</p>
         <h1>Bebin AI</h1>
         <p className="summary">
           The platform now has a working FastAPI backend, React frontend, and
-          deterministic dataset pipeline for ingesting, cleaning, preprocessing,
-          deduplicating, and validating training text.
+          deterministic ML foundation: dataset preprocessing plus a trainable
+          BPE tokenizer feeding checkpointed Transformer training and local text generation.
         </p>
         <div className="status-grid">
           <div className="status-panel">
@@ -19,7 +19,7 @@ export function App() {
           <div className="status-panel">
             <h2>Next</h2>
             <p>
-              Phase 3 trains and loads the project tokenizer.
+              Phase 7 exposes the local model through FastAPI chat and streaming endpoints.
             </p>
           </div>
         </div>

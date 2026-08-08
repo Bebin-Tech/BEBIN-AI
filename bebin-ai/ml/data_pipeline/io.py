@@ -24,7 +24,7 @@ def discover_input_files(paths: list[Path]) -> list[Path]:
 
 
 def read_jsonl(path: Path) -> Iterator[dict[str, object]]:
-    with path.open("r", encoding="utf-8") as file:
+    with path.open("r", encoding="utf-8-sig") as file:
         for line_number, line in enumerate(file, start=1):
             line = line.strip()
             if not line:
@@ -39,7 +39,7 @@ def read_jsonl(path: Path) -> Iterator[dict[str, object]]:
 
 
 def read_json(path: Path) -> Iterator[dict[str, object]]:
-    with path.open("r", encoding="utf-8") as file:
+    with path.open("r", encoding="utf-8-sig") as file:
         value = json.load(file)
 
     if isinstance(value, list):
@@ -65,4 +65,3 @@ def write_jsonl(path: Path, records: Iterator[dict[str, object]]) -> int:
             file.write("\n")
             count += 1
     return count
-

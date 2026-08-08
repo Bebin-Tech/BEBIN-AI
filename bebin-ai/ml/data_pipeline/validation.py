@@ -46,7 +46,7 @@ def validate_dataset(path: Path, min_chars: int = 20) -> ValidationReport:
     text_lengths: list[int] = []
     seen_texts: set[str] = set()
 
-    with path.open("r", encoding="utf-8") as file:
+    with path.open("r", encoding="utf-8-sig") as file:
         for line in file:
             line = line.strip()
             if not line:
@@ -105,4 +105,3 @@ def _has_required_fields(record: object) -> bool:
         and isinstance(record.get("source"), str)
         and isinstance(record.get("metadata"), dict)
     )
-
