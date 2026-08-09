@@ -418,24 +418,25 @@ export function App() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-tabs" aria-label="Workspace sections">
-          <button className="active" type="button">Home</button>
-          <button type="button">Code</button>
-        </div>
         <div className="brand">
           <span className="brand-mark">B</span>
-          <div>
-            <strong>Bebin AI</strong>
-            <span>Local SLM</span>
-          </div>
+          <button className="sidebar-icon" type="button" aria-label="Toggle sidebar">▯</button>
         </div>
         <button className="primary-action" type="button" onClick={() => void newChat()}>
           New chat
         </button>
         <div className="sidebar-links" aria-label="Tools">
-          <button type="button">Projects</button>
-          <button type="button">Artifacts</button>
-          <button type="button">Customize</button>
+          <button type="button">Plugins</button>
+          <button type="button">Scheduled Tasks</button>
+          <button type="button">Swarm</button>
+          <button type="button">Slides</button>
+          <button type="button">Deep Research</button>
+          <button type="button">Websites</button>
+          <button type="button">Docs</button>
+          <button type="button">Sheets</button>
+          <button type="button">Design</button>
+          <button type="button">Bebin Work <span>Beta</span></button>
+          <button type="button">Bebin Code</button>
         </div>
         <div className="sidebar-label">Recents</div>
         <nav className="conversation-list" aria-label="Conversations">
@@ -481,6 +482,10 @@ export function App() {
             Sign out
           </button>
         )}
+        <div className="account-card">
+          <span>{user?.email?.slice(0, 1).toUpperCase() ?? "B"}</span>
+          <strong>{user?.email ?? "Bebin"}</strong>
+        </div>
       </aside>
 
       <section className={`chat-panel ${activeConversation?.messages.length ? "has-messages" : "is-empty"}`}>
@@ -489,7 +494,7 @@ export function App() {
             <p className="eyebrow">Bebin AI</p>
             <h1>{activeConversation?.title ?? "New Chat"}</h1>
           </div>
-          <div className="plan-pill">Local run</div>
+          <div className="plan-pill">Local model</div>
           <BackendStatus status={status} backendState={backendState} onRefresh={refreshBackendState} />
         </header>
 
@@ -498,7 +503,7 @@ export function App() {
             activeConversation.messages.map((message) => <MessageBubble key={message.id} message={message} />)
           ) : (
             <div className="empty-state">
-              <h2><span className="spark-mark">*</span>What's cooking, Bebin?</h2>
+              <h2>BEBIN</h2>
               <p>
                 Connected to your local checkpoint through FastAPI. The current smoke model is tiny,
                 but this is the real end-to-end chat and document retrieval path.
@@ -582,8 +587,15 @@ export function App() {
               onKeyDown={handleKeyDown}
             />
             <button className="send-button" disabled={isSending || !input.trim()} type="submit">
-              Send
+              ↑
             </button>
+          </div>
+          <div className="composer-chips" aria-label="Bebin tools">
+            <span>Document Search</span>
+            <span>Calculator</span>
+            <span>RAG</span>
+            <span>Tools</span>
+            <span>Local SLM</span>
           </div>
         </form>
       </section>
