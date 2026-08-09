@@ -13,6 +13,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.health import router as health_router
+from app.api.routes.resumes import router as resumes_router
 from app.core.config import settings
 from app.core.logging import RequestContextMiddleware, configure_logging
 from app.db.init_db import init_db
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(conversations_router)
     app.include_router(documents_router)
+    app.include_router(resumes_router)
     app.include_router(chat_router)
     return app
 

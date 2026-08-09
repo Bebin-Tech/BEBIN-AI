@@ -145,7 +145,9 @@ button {
   padding-top: 0.8rem;
 }
 
-.auth-card input {
+.auth-card input,
+.resume-card input,
+.resume-card textarea {
   width: 100%;
   border: 1px solid #383838;
   border-radius: 8px;
@@ -166,6 +168,67 @@ button {
   color: #f4f4f2;
   cursor: pointer;
   padding: 0.55rem;
+}
+
+.resume-card {
+  display: grid;
+  gap: 0.5rem;
+  border-top: 1px solid #2d2d2d;
+  padding-top: 0.8rem;
+}
+
+.resume-card strong {
+  color: #f5f5f2;
+  font-size: 0.86rem;
+}
+
+.resume-upload {
+  display: block;
+  border: 1px dashed #454545;
+  border-radius: 10px;
+  color: #cfcfcb;
+  cursor: pointer;
+  padding: 0.65rem 0.7rem;
+  text-align: center;
+}
+
+.resume-upload input {
+  display: none;
+}
+
+.resume-card textarea {
+  min-height: 4rem;
+  resize: vertical;
+}
+
+.resume-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.resume-actions button {
+  border: 1px solid #383838;
+  background: #202020;
+  color: #f4f4f2;
+  cursor: pointer;
+  padding: 0.55rem;
+}
+
+.resume-actions button:hover {
+  background: #252525;
+}
+
+.resume-card pre {
+  overflow: auto;
+  max-height: 9rem;
+  margin: 0;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #101010;
+  color: #d8d8d5;
+  padding: 0.65rem;
+  white-space: pre-wrap;
 }
 
 .conversation-list {

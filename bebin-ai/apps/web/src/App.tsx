@@ -42,6 +42,16 @@ type ApiConversation = {
   }>;
 };
 
+type ResumeChatResponse = {
+  answer: string;
+  matches: Array<{
+    candidate_name: string;
+    filename: string;
+    text: string;
+    score: number;
+  }>;
+};
+
 type GenerationSettings = {
   maxNewTokens: number;
   temperature: number;
@@ -79,6 +89,10 @@ export function App() {
   const [activeId, setActiveId] = useState(() => conversations[0]?.id ?? "");
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [resumeFiles, setResumeFiles] = useState<File[]>([]);
+  const [resumeCandidate, setResumeCandidate] = useState("");
+  const [resumeQuestion, setResumeQuestion] = useState("");
+  const [resumeAnswer, setResumeAnswer] = useState("");
   const [settings, setSettings] = useState<GenerationSettings>(defaultSettings);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState("Ready");
@@ -391,6 +405,65 @@ export function App() {
     }
   }
 
+  async function uploadResumeFiles() {
+    if (!authToken) {
+      setStatus("Sign in required");
+      return;
+    }
+    if (resumeFiles.length === 0) {
+      setStatus("Select resume PDFs");
+      return;
+    }
+    setStatus("Uploading resumes");
+    const form = new FormData();
+    for (const file of resumeFiles) {
+      form.append("files", file);
+    }
+    const response = await fetch(`${apiBaseUrl}/resumes/bulk`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: form,
+    });
+    if (!response.ok) {
+      setStatus("Resume upload failed");
+      setResumeAnswer(await response.text());
+      return;
+    }
+    const uploaded = (await response.json()) as Array<{ candidate_name: string }>;
+    setResumeFiles([]);
+    setResumeAnswer(`Indexed ${uploaded.length} resumes: ${uploaded.map((resume) => resume.candidate_name).join(", ")}`);
+    setStatus("Ready");
+  }
+
+  async function askResumeBot() {
+    if (!authToken) {
+      setStatus("Sign in required");
+      return;
+    }
+    if (!resumeQuestion.trim()) {
+      setStatus("Ask resume question");
+      return;
+    }
+    setStatus("Searching resumes");
+    const response = await fetch(`${apiBaseUrl}/resumes/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({
+        question: resumeQuestion,
+        candidate_name: resumeCandidate.trim() || null,
+        top_k: 5,
+      }),
+    });
+    if (!response.ok) {
+      setStatus("Resume search failed");
+      setResumeAnswer(await response.text());
+      return;
+    }
+    const body = (await response.json()) as ResumeChatResponse;
+    setResumeAnswer(body.answer);
+    setStatus("Ready");
+  }
+
   async function refreshBackendState() {
     try {
       const live = await fetch(`${apiBaseUrl}/live`);
@@ -470,6 +543,36 @@ export function App() {
           </div>
           {user && <small>Signed in as {user.email}</small>}
         </form>
+        <section className="resume-card">
+          <strong>Resume RAG</strong>
+          <label className="resume-upload">
+            <input
+              multiple
+              accept="application/pdf,.pdf"
+              type="file"
+              onChange={(event) => setResumeFiles(Array.from(event.target.files ?? []))}
+            />
+            {resumeFiles.length > 0 ? `${resumeFiles.length} PDFs selected` : "Upload bulk PDFs"}
+          </label>
+          <input
+            aria-label="Candidate name"
+            placeholder="Candidate name"
+            value={resumeCandidate}
+            onChange={(event) => setResumeCandidate(event.target.value)}
+          />
+          <textarea
+            aria-label="Resume question"
+            placeholder="Ask about a candidate, skill, or role..."
+            rows={2}
+            value={resumeQuestion}
+            onChange={(event) => setResumeQuestion(event.target.value)}
+          />
+          <div className="resume-actions">
+            <button type="button" onClick={() => void uploadResumeFiles()}>Index</button>
+            <button type="button" onClick={() => void askResumeBot()}>Ask</button>
+          </div>
+          {resumeAnswer && <pre>{resumeAnswer}</pre>}
+        </section>
         <button
           className="secondary-action"
           type="button"

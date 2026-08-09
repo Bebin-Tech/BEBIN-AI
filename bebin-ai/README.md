@@ -515,3 +515,37 @@ Invoke-RestMethod http://127.0.0.1:8000/ready
 ```
 
 `/live` verifies that the API process is running. `/ready` verifies operational dependencies. It can return `503` until the configured tokenizer and checkpoint files exist, which is expected before a real model checkpoint has been trained.
+
+## Resume RAG Chatbot
+
+Bebin AI includes a LangChain-based resume RAG flow for bulk PDF resume upload and candidate lookup.
+
+Install/update API dependencies after pulling this feature:
+
+```powershell
+cd "C:\Users\bbebi\OneDrive\Documents\BEBIN-AI\bebin-ai\apps\api"
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Run the backend:
+
+```powershell
+cd "C:\Users\bbebi\OneDrive\Documents\BEBIN-AI\bebin-ai"
+.\apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir apps\api --reload
+```
+
+API endpoints:
+
+- `POST /resumes/bulk`: upload many PDF resumes as `files`.
+- `GET /resumes`: list indexed resumes.
+- `GET /resumes/search?query=python&candidate_name=Priya`: search indexed resume chunks.
+- `POST /resumes/chat`: ask a candidate-specific resume question.
+
+Example chat request:
+
+```powershell
+$headers = @{ Authorization = "Bearer <token>" }
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/resumes/chat -Headers $headers -ContentType 'application/json' -Body '{"question":"Find the candidate with LangChain and FAISS experience","candidate_name":"Priya","top_k":5}'
+```
+
+The frontend sidebar also has a `Resume RAG` panel for bulk PDF upload and candidate questions. Answers are extractive and citation-first: the bot returns matching candidate evidence from the uploaded resumes instead of inventing profile details.
