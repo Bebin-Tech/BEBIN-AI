@@ -1,0 +1,15 @@
+.git
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+**/dist
+*.db
+*.sqlite3
+.env
+uploads
+data/raw
+data/processed
+artifacts/runs
+artifacts/checkpoints

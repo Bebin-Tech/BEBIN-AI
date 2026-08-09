@@ -50,6 +50,18 @@ type GenerationSettings = {
   repetitionPenalty: number;
 };
 
+type BackendCheck = {
+  ok: boolean;
+  detail: string;
+};
+
+type BackendState = {
+  live: boolean;
+  ready: boolean;
+  checks: Record<string, BackendCheck>;
+  checkedAt?: string;
+};
+
 const defaultSettings: GenerationSettings = {
   maxNewTokens: 64,
   temperature: 0.8,
@@ -70,6 +82,11 @@ export function App() {
   const [settings, setSettings] = useState<GenerationSettings>(defaultSettings);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState("Ready");
+  const [backendState, setBackendState] = useState<BackendState>({
+    live: false,
+    ready: false,
+    checks: {},
+  });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const activeConversation = useMemo(
@@ -96,6 +113,14 @@ export function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeConversation?.messages, isSending]);
+
+  useEffect(() => {
+    void refreshBackendState();
+    const timer = window.setInterval(() => {
+      void refreshBackendState();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
@@ -135,9 +160,21 @@ export function App() {
     }));
 
     try {
-      const done = await streamChat(message, activeConversation.id, (partialText) => {
-        updateMessage(activeConversation.id, assistantMessage.id, partialText);
-      });
+      let done: { conversation_id?: string; tool_results?: ToolResult[] } | undefined;
+      try {
+        done = await streamChat(message, activeConversation.id, (partialText) => {
+          updateMessage(activeConversation.id, assistantMessage.id, partialText);
+        });
+      } catch (error) {
+        if (!isConversationNotFound(error)) {
+          throw error;
+        }
+        updateMessage(activeConversation.id, assistantMessage.id, "");
+        setStatus("Recovering chat");
+        done = await streamChat(message, undefined, (partialText) => {
+          updateMessage(activeConversation.id, assistantMessage.id, partialText);
+        });
+      }
       if (done?.conversation_id && done.conversation_id !== activeConversation.id) {
         const persistedConversationId = done.conversation_id;
         updateConversation(activeConversation.id, (conversation) => ({
@@ -157,6 +194,7 @@ export function App() {
       setStatus("Ready");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      void refreshBackendState();
       updateMessage(
         activeConversation.id,
         assistantMessage.id,
@@ -170,7 +208,7 @@ export function App() {
 
   async function streamChat(
     message: string,
-    conversationId: string,
+    conversationId: string | undefined,
     onText: (text: string) => void,
   ): Promise<{ conversation_id?: string; tool_results?: ToolResult[] } | undefined> {
     const response = await fetch(`${apiBaseUrl}/chat/stream`, {
@@ -178,7 +216,7 @@ export function App() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({
         message,
-        conversation_id: conversationId,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
         max_new_tokens: settings.maxNewTokens,
         temperature: settings.temperature,
         top_k: settings.topK,
@@ -353,9 +391,37 @@ export function App() {
     }
   }
 
+  async function refreshBackendState() {
+    try {
+      const live = await fetch(`${apiBaseUrl}/live`);
+      if (!live.ok) {
+        setBackendState({ live: false, ready: false, checks: {}, checkedAt: new Date().toISOString() });
+        return;
+      }
+
+      const ready = await fetch(`${apiBaseUrl}/ready`);
+      const readyBody = (await ready.json()) as {
+        status: string;
+        checks?: Record<string, BackendCheck>;
+      };
+      setBackendState({
+        live: true,
+        ready: ready.ok && readyBody.status === "ready",
+        checks: readyBody.checks ?? {},
+        checkedAt: new Date().toISOString(),
+      });
+    } catch {
+      setBackendState({ live: false, ready: false, checks: {}, checkedAt: new Date().toISOString() });
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
+        <div className="sidebar-tabs" aria-label="Workspace sections">
+          <button className="active" type="button">Home</button>
+          <button type="button">Code</button>
+        </div>
         <div className="brand">
           <span className="brand-mark">B</span>
           <div>
@@ -366,6 +432,12 @@ export function App() {
         <button className="primary-action" type="button" onClick={() => void newChat()}>
           New chat
         </button>
+        <div className="sidebar-links" aria-label="Tools">
+          <button type="button">Projects</button>
+          <button type="button">Artifacts</button>
+          <button type="button">Customize</button>
+        </div>
+        <div className="sidebar-label">Recents</div>
         <nav className="conversation-list" aria-label="Conversations">
           {conversations.map((conversation) => (
             <button
@@ -411,16 +483,14 @@ export function App() {
         )}
       </aside>
 
-      <section className="chat-panel">
+      <section className={`chat-panel ${activeConversation?.messages.length ? "has-messages" : "is-empty"}`}>
         <header className="topbar">
-          <div>
+          <div className="title-block">
             <p className="eyebrow">Bebin AI</p>
             <h1>{activeConversation?.title ?? "New Chat"}</h1>
           </div>
-          <div className="api-status">
-            <span className={status === "Ready" ? "status-dot ready" : "status-dot"} />
-            <span>{status}</span>
-          </div>
+          <div className="plan-pill">Local run</div>
+          <BackendStatus status={status} backendState={backendState} onRefresh={refreshBackendState} />
         </header>
 
         <section className="messages" aria-live="polite">
@@ -428,7 +498,7 @@ export function App() {
             activeConversation.messages.map((message) => <MessageBubble key={message.id} message={message} />)
           ) : (
             <div className="empty-state">
-              <h2>How can I help you today?</h2>
+              <h2><span className="spark-mark">*</span>What's cooking, Bebin?</h2>
               <p>
                 Connected to your local checkpoint through FastAPI. The current smoke model is tiny,
                 but this is the real end-to-end chat and document retrieval path.
@@ -518,6 +588,50 @@ export function App() {
         </form>
       </section>
     </main>
+  );
+}
+
+function BackendStatus({
+  status,
+  backendState,
+  onRefresh,
+}: {
+  status: string;
+  backendState: BackendState;
+  onRefresh: () => void;
+}) {
+  const stateLabel = backendState.ready ? status : backendState.live ? "Model not ready" : "Backend unavailable";
+  const stateClass = backendState.ready ? "ready" : backendState.live ? "warning" : "offline";
+  const checks = Object.entries(backendState.checks);
+
+  return (
+    <details className={`api-status ${stateClass}`}>
+      <summary>
+        <span className={`status-dot ${stateClass}`} />
+        <span>{stateLabel}</span>
+      </summary>
+      <div className="status-panel">
+        <div className="status-panel-header">
+          <strong>{apiBaseUrl}</strong>
+          <button type="button" onClick={onRefresh}>Refresh</button>
+        </div>
+        {checks.length > 0 ? (
+          <dl>
+            {checks.map(([name, check]) => (
+              <div key={name}>
+                <dt>{name}</dt>
+                <dd className={check.ok ? "check-ok" : "check-failed"}>{check.detail}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p>Start the FastAPI backend on port 8000.</p>
+        )}
+        {backendState.checkedAt && (
+          <small>Checked {new Date(backendState.checkedAt).toLocaleTimeString()}</small>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -653,6 +767,10 @@ function createConversation(): Conversation {
 
 function titleFromMessage(message: string): string {
   return message.slice(0, 42) || "New conversation";
+}
+
+function isConversationNotFound(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes("conversation not found");
 }
 
 function withFileNote(message: string, files: File[]): string {

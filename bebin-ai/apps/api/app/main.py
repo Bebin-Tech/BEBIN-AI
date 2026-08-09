@@ -14,10 +14,12 @@ from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.health import router as health_router
 from app.core.config import settings
+from app.core.logging import RequestContextMiddleware, configure_logging
 from app.db.init_db import init_db
 
 
 def create_app() -> FastAPI:
+    configure_logging(settings.log_level)
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -32,6 +34,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    if settings.enable_request_logging:
+        app.add_middleware(RequestContextMiddleware)
 
     init_db()
     app.include_router(auth_router)

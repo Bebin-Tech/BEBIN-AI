@@ -2,7 +2,7 @@
 
 Bebin AI is a production-oriented AI assistant platform built phase-by-phase.
 
-This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript chat frontend, local database infrastructure, users, persisted conversations/messages, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, local text generation, REST chat endpoints, RAG over uploaded documents, modular tool calling, offline model evaluation, LoRA fine-tuning, and CPU inference quantization.
+This repository is intentionally small and grows phase-by-phase. It contains a working FastAPI skeleton, a React + Vite + TypeScript chat frontend, local database infrastructure, users, persisted conversations/messages, a deterministic dataset preprocessing pipeline, a trainable BPE tokenizer, a decoder-only Transformer SLM architecture, checkpointed training, local text generation, REST chat endpoints, RAG over uploaded documents, modular tool calling, offline model evaluation, LoRA fine-tuning, CPU inference quantization, first-pass production deployment wiring, and a repeatable local training workflow.
 
 ## Phase 1 Status
 
@@ -155,6 +155,34 @@ Completed in this phase:
 - Quantized generation CLI command.
 - Tests for LoRA injection, adapter training/reload, and quantized generation.
 
+## Phase 14 Status
+
+Completed in this phase:
+
+- Request ID middleware with `X-Request-ID` response headers.
+- API request logging configuration.
+- Liveness endpoint at `/live`.
+- Readiness endpoint at `/ready` for database, tokenizer, checkpoint, and upload directory checks.
+- API Dockerfile.
+- Web Dockerfile and Nginx single-page-app config.
+- Full `docker-compose.yml` services for API, web, and PostgreSQL.
+- Compose health checks and persistent upload/PostgreSQL volumes.
+- Production environment examples.
+- Tests for health, liveness, readiness, and request IDs.
+
+## Phase 15 Status
+
+Completed in this phase:
+
+- One-command local training workflow.
+- Raw data preprocessing and validation.
+- Tokenizer training.
+- Checkpointed model training.
+- Optional evaluation report generation.
+- Run manifest with produced artifact paths and metrics.
+- CLI wrapper at `scripts\run_training_pipeline.py`.
+- Workflow test that creates real dataset, tokenizer, checkpoint, training log, manifest, and evaluation report.
+
 ## Local Environment Findings
 
 - OS: Windows 10.0.26200.8973, x64.
@@ -290,6 +318,34 @@ Outputs:
 - `artifacts\runs\smoke\training_log.csv`
 
 Mixed precision is enabled only when CUDA is available. On CPU-only machines, training automatically uses standard precision.
+
+## Training Workflow
+
+For repeatable local improvement runs, use the workflow command instead of running each step manually:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe scripts\run_training_pipeline.py --input data\raw --output-dir artifacts\runs\local-v1 --vocab-size 8000 --min-frequency 2 --context-length 128 --layers 4 --heads 4 --dim 256 --batch-size 8 --epochs 1 --learning-rate 0.0003 --checkpoint-every-steps 100 --eval-prompt "Bebin AI"
+```
+
+Outputs:
+
+- `artifacts\runs\local-v1\dataset\train.jsonl`
+- `artifacts\runs\local-v1\tokenizer\tokenizer.json`
+- `artifacts\runs\local-v1\checkpoints\last.pt`
+- `artifacts\runs\local-v1\checkpoints\best.pt`
+- `artifacts\runs\local-v1\checkpoints\training_log.csv`
+- `artifacts\runs\local-v1\evaluation\report.json`
+- `artifacts\runs\local-v1\manifest.json`
+
+To make FastAPI use that run:
+
+```powershell
+$env:MODEL_TOKENIZER_PATH="artifacts/runs/local-v1/tokenizer/tokenizer.json"
+$env:MODEL_CHECKPOINT_PATH="artifacts/runs/local-v1/checkpoints/last.pt"
+.\apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir apps\api --reload
+```
+
+The workflow still uses the same real preprocessing, tokenizer, training, and evaluation modules. It only coordinates them and records the outputs.
 
 ## Text Generation
 
@@ -430,3 +486,32 @@ Generate with dynamic CPU int8 quantization:
 ```
 
 LoRA keeps the base model frozen and stores only adapter weights. Dynamic quantization is currently a runtime CPU optimization path; it does not replace the original checkpoint.
+
+## Production Run
+
+Validate the Compose file:
+
+```powershell
+docker compose config
+```
+
+Run the full local production stack:
+
+```powershell
+docker compose up --build
+```
+
+Open the web app:
+
+```text
+http://127.0.0.1:5173
+```
+
+API checks:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/live
+Invoke-RestMethod http://127.0.0.1:8000/ready
+```
+
+`/live` verifies that the API process is running. `/ready` verifies operational dependencies. It can return `503` until the configured tokenizer and checkpoint files exist, which is expected before a real model checkpoint has been trained.

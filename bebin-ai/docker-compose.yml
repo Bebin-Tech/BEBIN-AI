@@ -1,4 +1,43 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: bebin-ai-api
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bebin}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-bebin_ai}
+      MODEL_TOKENIZER_PATH: ${MODEL_TOKENIZER_PATH:-artifacts/tokenizer/tokenizer.json}
+      MODEL_CHECKPOINT_PATH: ${MODEL_CHECKPOINT_PATH:-artifacts/runs/smoke/last.pt}
+      UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - uploads_data:/app/uploads
+      - ./artifacts:/app/artifacts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=2).read()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: bebin-ai-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     container_name: bebin-ai-postgres
@@ -19,4 +58,4 @@ services:
 
 volumes:
   postgres_data:
-
+  uploads_data:
