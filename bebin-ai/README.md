@@ -183,6 +183,16 @@ Completed in this phase:
 - CLI wrapper at `scripts\run_training_pipeline.py`.
 - Workflow test that creates real dataset, tokenizer, checkpoint, training log, manifest, and evaluation report.
 
+## Phase 16 Status
+
+Completed in this phase:
+
+- Mobile application architecture (React Native + Expo).
+- Shared AI service layer for mobile and web.
+- Mobile-optimized chat interface with streaming support.
+- Biometric-ready authentication flow for mobile devices.
+- Support for on-device RAG document preview.
+
 ## Local Environment Findings
 
 - OS: Windows 10.0.26200.8973, x64.

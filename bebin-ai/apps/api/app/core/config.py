@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        "*",  # Allow mobile and other origins for development
     ]
     enable_docs: bool = True
     enable_request_logging: bool = Field(default=True, alias="ENABLE_REQUEST_LOGGING")
